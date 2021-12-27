@@ -5,7 +5,7 @@ import numpy as np
 import math
 import cv2
 from moviepy.editor import VideoFileClip
-from IPython.display import HTML
+
 
 # getting image
 imgDir = 'test_images/'
@@ -24,6 +24,7 @@ def display_image(images,cmap=None):
         plt.autoscale(tight=True)
     plt.show()
 
+display_image(imgList)
 
 # masking uncessary color
 def color_filter(images):
@@ -39,18 +40,19 @@ def color_filter(images):
     yellowMask = cv2.inRange(hls, yelLower, yelUpper)
 
     mask = cv2.bitwise_or(whiteMask, yellowMask)
-    masked = cv2.bitwise_and(images, images,mask=mask)
+    masked = cv2.bitwise_and(images,images,mask = mask)
 
     return masked
 
 filteredImage = list(map(color_filter,imgList))
+display_image(filteredImage)
 
 # region of interest
 def roi(images):
-    x = int(images.shape[1])
-    y = int(images.shape[0])
+    x = int(images.shape[1])     #width
+    y = int(images.shape[0])     # height
     shape = np.array([[int(0), int(y)], [int(x), int(y)], [int(0.55*x), int(0.6*y)], [int(0.45*x), int(0.6*y)]])
-
+    
     mask = np.zeros_like(images)
 
     if len(images.shape) > 2:
@@ -65,40 +67,39 @@ def roi(images):
     return maskedImage
 
 roiImage = list(map(roi,filteredImage))
-
+display_image(roiImage)
 
 # edge detection
 def grayScale(images):
     return cv2.cvtColor(images, cv2.COLOR_RGB2GRAY)
 
 def canny(images):
-    return cv2.Canny(grayScale(images), 50 , 120)
+    return cv2.Canny(grayScale(images), 50 , 150)
 
 cannyImage = list(map(canny, roiImage))
-
+display_image(cannyImage , cmap='gray')
 
 # finding lanes
 rightSlope , leftSlope , rightIntercept , leftIntercept = [],[],[],[]
-
-
 def draw_lines(img, lines, thickness=5):
     global rightSlope, leftSlope, rightIntercept, leftIntercept
     rightColor = [0, 255, 0]
     leftColor = [255, 0, 0]
 
-    #this is used to filter out the outlying lines that can affect the average
-    #We then use the slope we determined to find the y-intercept of the filtered lines by solving for b in y=mx+b
+    # get right slope & intercept 
+    # get left slope & intercept
     for line in lines:
+        print(line)
         for x1, y1, x2, y2 in line:
             slope = (y1-y2)/(x1-x2)
-            if slope > 0.3:
+            if slope > 0:
                 if x1 > 500:
                     yintercept = y2 - (slope*x2)
                     rightSlope.append(slope)
                     rightIntercept.append(yintercept)
                 else:
                     None
-            elif slope < -0.3:
+            elif slope < 0:
                 if x1 < 600:
                     yintercept = y2 - (slope*x2)
                     leftSlope.append(slope)
@@ -124,10 +125,8 @@ def draw_lines(img, lines, thickness=5):
         pts = pts.reshape((-1, 1, 2))
         cv2.fillPoly(img, [pts], (0, 0, 255))
 
-        cv2.line(img, (left_line_x1, int(
-            0.65*img.shape[0])), (left_line_x2, int(img.shape[0])), leftColor, 10)
-        cv2.line(img, (right_line_x1, int(
-            0.65*img.shape[0])), (right_line_x2, int(img.shape[0])), rightColor, 10)
+        cv2.line(img, (left_line_x1, int(0.65*img.shape[0])), (left_line_x2, int(img.shape[0])), leftColor, 10)
+        cv2.line(img, (right_line_x1, int(0.65*img.shape[0])), (right_line_x2, int(img.shape[0])), rightColor, 10)
     except ValueError:
         #I keep getting errors for some reason, so I put this here. Idk if the error still persists.
         pass
@@ -148,21 +147,18 @@ def line_detect(image):
 hough_img = list(map(line_detect, cannyImage))
 
 
-def weighted_img(img, initial_img, α=0.8, β=1., λ=0.):
-    """
-    initial_img * α + img * β + λ
-    NOTE: initial_img and img must be the same shape!
-    """
-    return cv2.addWeighted(initial_img, α, img, β, λ)
+def weighted_img(img, initial_img, alpha=0.8, beta=1., lamda=0.):
+    # # calculate weight image on out = initial_img*alpha + img*beta + lamda
+    return cv2.addWeighted(initial_img, alpha, img, beta, lamda)
 
 
 def weightSum(input_set):
     img = list(input_set)
-    return cv2.addWeighted(img[0], 1, img[1], 0.8, 0)
+    return weighted_img(img[0] ,img[1])
 
 
 result_img = list(map(weightSum, zip(hough_img, imgList)))
-
+display_image(result_img)
 
 
 def processImage(image):
@@ -170,24 +166,29 @@ def processImage(image):
     filterimg = color_filter(interest)
     canny = cv2.Canny(grayScale(filterimg), 50, 120)
     myline = hough_lines(canny, 1, np.pi/180, 10, 20, 5)
-    weighted_img = cv2.addWeighted(myline, 1, image, 0.8, 0)
+    weightedImg = weighted_img(myline ,image)
 
-    return weighted_img
+    return weightedImg
 
 
 output1 = 'test_videos_output/solidYellowLeft.mp4'
 output2 = 'test_videos_output/solidWhiteRight.mp4'
 output3 = 'test_videos_output/challenge.mp4'
+output4 = 'test_videos_output/test2.mp4'
 clip1 = VideoFileClip("test_videos/solidYellowLeft.mp4")  # .subclip(3,5)
 clip2 = VideoFileClip("test_videos/solidWhiteRight.mp4")  # .subclip(3,5)
 clip3 = VideoFileClip("test_videos/challenge.mp4")  # .subclip(3,5)
+clip4 = VideoFileClip("test_videos/test2.mp4")  # .subclip(3,5)
 # NOTE: this function expects color images!!
 pclip1 = clip1.fl_image(processImage)
 # NOTE: this function expects color images!!
 pclip2 = clip2.fl_image(processImage)
 # NOTE: this function expects color images!!
 pclip3 = clip3.fl_image(processImage)
+# NOTE: this function expects color images!!
+pclip4 = clip4.fl_image(processImage)
 
 pclip1.write_videofile(output1, audio=False)
 pclip2.write_videofile(output2, audio=False)
 pclip3.write_videofile(output3, audio=False)
+pclip4.write_videofile(output4, audio=False)
